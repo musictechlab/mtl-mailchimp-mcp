@@ -180,6 +180,7 @@ def mailchimp_create_campaign(
     from_name: str = "",
     reply_to: str = "",
     preview_text: str = "",
+    segment_id: str = "",
 ) -> str:
     """Create a new draft campaign for an audience.
 
@@ -190,6 +191,8 @@ def mailchimp_create_campaign(
         from_name: Sender name. Defaults to MAILCHIMP_FROM_NAME.
         reply_to: Reply-to address. Defaults to MAILCHIMP_REPLY_TO.
         preview_text: Inbox preview text.
+        segment_id: Optional saved segment / tag ID to target instead of the
+            whole audience (see mailchimp_list_segments).
     """
     list_id = list_id or os.getenv("MAILCHIMP_DEFAULT_LIST_ID", "")
     from_name = from_name or os.getenv("MAILCHIMP_FROM_NAME", "")
@@ -215,13 +218,91 @@ def mailchimp_create_campaign(
         from_name=from_name,
         reply_to=reply_to,
         preview_text=preview_text,
+        segment_id=int(segment_id) if segment_id else None,
     )
+    target = f"segment `{segment_id}`" if segment_id else f"audience `{list_id}`"
     return (
         f"Created draft campaign **{title}**\n"
         f"ID: `{c.get('id')}`\n"
-        f"Audience: `{list_id}`\n\n"
+        f"Target: {target}\n\n"
         f"Next: mailchimp_set_content_from_file, then mailchimp_send_test."
     )
+
+
+@mcp.tool()
+def mailchimp_list_segments(list_id: str = "") -> str:
+    """List an audience's segments and tags (with IDs and member counts)."""
+    list_id = list_id or os.getenv("MAILCHIMP_DEFAULT_LIST_ID", "")
+    if not list_id:
+        return "Provide list_id or set MAILCHIMP_DEFAULT_LIST_ID."
+    data = mailchimp.get_list_segments(list_id)
+    segs = data.get("segments", [])
+    if not segs:
+        return "No segments or tags found."
+    lines = [f"# Segments & tags ({len(segs)})\n"]
+    for s in segs:
+        lines.append(
+            f"- [{s.get('type')}] **{s.get('name')}**  "
+            f"id=`{s.get('id')}`  ({s.get('member_count')} members)"
+        )
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def mailchimp_set_language_from_tag(
+    tag_segment_id: str,
+    in_language: str = "pl",
+    out_language: str = "en",
+    list_id: str = "",
+    confirm: bool = False,
+) -> str:
+    """Set each member's contact language based on a tag/segment.
+
+    Members in the given tag get ``in_language``; everyone else gets
+    ``out_language``. This writes to real contacts, so it is a DRY RUN unless
+    ``confirm=true`` is passed.
+
+    Args:
+        tag_segment_id: The tag (static segment) that marks the in-language group.
+        in_language: Language code for tagged members (default "pl").
+        out_language: Language code for everyone else (default "en").
+        list_id: Audience ID. Defaults to MAILCHIMP_DEFAULT_LIST_ID.
+        confirm: Must be true to actually write changes.
+    """
+    list_id = list_id or os.getenv("MAILCHIMP_DEFAULT_LIST_ID", "")
+    if not list_id:
+        return "Provide list_id or set MAILCHIMP_DEFAULT_LIST_ID."
+
+    seg = mailchimp.get_segment_members(list_id, tag_segment_id)
+    in_emails = {m["email_address"].lower() for m in seg.get("members", [])}
+    members = mailchimp.get_members(list_id).get("members", [])
+
+    plan = []  # (subscriber_hash, email, target_language)
+    for m in members:
+        target = (
+            in_language if m["email_address"].lower() in in_emails else out_language
+        )
+        if m.get("language") != target:
+            plan.append((m["id"], m["email_address"], target))
+
+    if not plan:
+        return "All members already have the correct language. Nothing to do."
+
+    n_in = sum(1 for _, _, t in plan if t == in_language)
+    n_out = len(plan) - n_in
+    summary = (
+        f"{len(plan)} members to update: "
+        f"{n_in} → {in_language}, {n_out} → {out_language} "
+        f"(of {len(members)} total)."
+    )
+    if not confirm:
+        return f"DRY RUN — {summary}\nRe-run with confirm=true to apply."
+
+    done = 0
+    for subscriber_hash, _email, target in plan:
+        mailchimp.update_member_language(list_id, subscriber_hash, target)
+        done += 1
+    return f"Updated {done} members. {summary}"
 
 
 @mcp.tool()
