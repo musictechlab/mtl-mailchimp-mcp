@@ -1,0 +1,30 @@
+[project]
+name = "mtl-mailchimp-mcp"
+version = "0.1.0"
+description = "MCP server for Mailchimp — list audiences, copy/create draft campaigns, push HTML, send test emails (draft + test only)"
+authors = [
+    {name = "MusicTech Lab"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "httpx>=0.28.0,<0.29.0",
+    "python-dotenv>=1.0.0,<2.0.0",
+]
+
+[tool.poetry]
+packages = [{include = "mtl_mailchimp_mcp", from = "src"}]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "ruff (>=0.15.6,<0.16.0)",
+    "pytest (>=9.0.2,<10.0.0)"
+]
