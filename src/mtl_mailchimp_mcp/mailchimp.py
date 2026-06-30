@@ -107,11 +107,19 @@ def create_campaign(
     from_name: str,
     reply_to: str,
     preview_text: str = "",
+    segment_id: int | None = None,
 ) -> dict:
-    """Create a new regular (draft) campaign for an audience."""
+    """Create a new regular (draft) campaign for an audience.
+
+    If segment_id is given, the campaign targets that saved segment / tag
+    instead of the whole audience.
+    """
+    recipients: dict = {"list_id": list_id}
+    if segment_id:
+        recipients["segment_opts"] = {"saved_segment_id": int(segment_id)}
     body = {
         "type": "regular",
-        "recipients": {"list_id": list_id},
+        "recipients": recipients,
         "settings": {
             "subject_line": subject,
             "title": title,
@@ -139,6 +147,54 @@ def send_test(campaign_id: str, emails: list[str], send_type: str = "html") -> d
         "POST",
         f"/campaigns/{campaign_id}/actions/test",
         json={"test_emails": emails, "send_type": send_type},
+    )
+
+
+# --- Audiences: segments / tags / members ---
+
+
+def get_list_segments(list_id: str, count: int = 100) -> dict:
+    """List an audience's segments and tags (tags are 'static' segments)."""
+    return _request(
+        "GET",
+        f"/lists/{list_id}/segments",
+        params={
+            "count": count,
+            "fields": (
+                "segments.id,segments.name,segments.type,"
+                "segments.member_count,total_items"
+            ),
+        },
+    )
+
+
+def get_segment_members(list_id: str, segment_id: str, count: int = 1000) -> dict:
+    """List the members of a segment / tag."""
+    return _request(
+        "GET",
+        f"/lists/{list_id}/segments/{segment_id}/members",
+        params={"count": count, "fields": "members.id,members.email_address"},
+    )
+
+
+def get_members(list_id: str, count: int = 2000) -> dict:
+    """List audience members (id is the subscriber hash) with their language."""
+    return _request(
+        "GET",
+        f"/lists/{list_id}/members",
+        params={
+            "count": count,
+            "fields": "members.id,members.email_address,members.language",
+        },
+    )
+
+
+def update_member_language(list_id: str, subscriber_hash: str, language: str) -> dict:
+    """Set a single member's contact language (e.g. 'en', 'pl')."""
+    return _request(
+        "PATCH",
+        f"/lists/{list_id}/members/{subscriber_hash}",
+        json={"language": language},
     )
 
 

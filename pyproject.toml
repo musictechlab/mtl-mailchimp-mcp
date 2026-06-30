@@ -1,6 +1,6 @@
 [project]
 name = "mtl-mailchimp-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for Mailchimp — list audiences, copy/create draft campaigns, push HTML, send test emails (draft + test only)"
 authors = [
     {name = "MusicTech Lab"}
